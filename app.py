@@ -1,47 +1,40 @@
-# app.py
 from flask import Flask, request, render_template_string, jsonify, redirect, url_for, session
 from datetime import datetime
 import os
+import json
 
 app = Flask(__name__)
 
-# —————————————————————— Variáveis de ambiente obrigatórias ——————————————————————
-# Se alguma destas não estiver definida, a app falha no arranque.
-#
-#   - SECRET_KEY: usada pelo Flask para criptografar sessões
-#   - FLASK_USER : nome de utilizador para acesso ao dashboard
-#   - FLASK_PASS : senha para acesso ao dashboard
-# Certifique-se de definir estas variáveis no ambiente onde a app vai correr.
+# —————————————————————— Variáveis obrigatórias ——————————————————————
 app.secret_key = os.environ["SECRET_KEY"]
 USERNAME = os.environ["FLASK_USER"]
 PASSWORD = os.environ["FLASK_PASS"]
 
-# —————————————————————— HISTÓRICO DO CAIXOTE (apenas “hora” e “contagem”) ——————————————————————
-# Cada entrada é um dicionário {"hora": "2025-06-06 13:07:25", "deposito": "1"}
-historico_lixo = []
+# —————————————————————— Persistência do histórico em arquivo JSON ——————————————————————
+HISTORICO_FILE = "historico.json"
+
+def carregar_historico():
+    if os.path.exists(HISTORICO_FILE):
+        with open(HISTORICO_FILE, "r") as f:
+            return json.load(f)
+    return []
+
+def salvar_historico():
+    with open(HISTORICO_FILE, "w") as f:
+        json.dump(historico_lixo, f)
+
+historico_lixo = carregar_historico()
 
 # —————————————————————— ROTA PARA REGISTRO DO CAIXOTE ——————————————————————
 @app.route('/registo_lixo', methods=['GET'])
 def registo_lixo():
-    """
-    Recebe por query string apenas:
-      - deposito: inteiro ou string que representa quantas vezes a tampa foi aberta.
-
-    Exemplo de chamada:
-      GET /registo_lixo?deposito=7
-
-    O código registra o timestamp atual (data+hora) e o valor de `deposito` em
-    uma lista interna `historico_lixo`. Ele insere no início (índice 0), para
-    que a lista mantenha os eventos mais recentes primeiro.
-
-    Retorna:
-      "OK", 200
-    """
     contador = request.args.get("deposito", "")
     hora_atual = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    # Adiciona nova entrada no topo da lista
-    historico_lixo.insert(0, {"hora": hora_atual, "deposito": contador})
+    # Só adiciona se for diferente do último valor
+    if not historico_lixo or historico_lixo[0]["deposito"] != contador:
+        historico_lixo.insert(0, {"hora": hora_atual, "deposito": contador})
+        salvar_historico()
     return "OK", 200
 
 # —————————————————————— ROTA DE LOGIN ——————————————————————
@@ -49,13 +42,11 @@ def registo_lixo():
 def login():
     erro = ""
     if request.method == 'POST':
-        # Verifica credenciais
         if request.form['username'] == USERNAME and request.form['password'] == PASSWORD:
             session['user'] = USERNAME
             return redirect(url_for('dashboard'))
         else:
             erro = "Credenciais inválidas"
-    # Renderiza formulário de login (HTML inline)
     return render_template_string("""
     <!DOCTYPE html>
     <html lang="pt-BR">
@@ -79,15 +70,13 @@ def login():
           box-shadow: 0 0 10px rgba(0,0,0,0.2);
           width: 300px;
         }
-        input {
+        input, button {
           width: 100%;
           padding: 10px;
           margin: 10px 0;
           box-sizing: border-box;
         }
         button {
-          width: 100%;
-          padding: 10px;
           background: #4CAF50;
           color: white;
           border: none;
@@ -100,7 +89,6 @@ def login():
         .erro {
           color: red;
           font-size: 0.9em;
-          margin-top: 5px;
         }
       </style>
     </head>
@@ -118,15 +106,12 @@ def login():
     </html>
     """, erro=erro)
 
-# —————————————————————— DASHBOARD DO CAIXOTE (apenas contagem) ——————————————————————
+# —————————————————————— DASHBOARD ——————————————————————
 @app.route('/dashboard')
 def dashboard():
-    # Se não estiver autenticado, redireciona para login
     if 'user' not in session:
         return redirect(url_for('login'))
-
-    # HTML inline do Dashboard
-    html = """
+    return render_template_string("""
     <!DOCTYPE html>
     <html lang="pt-BR">
     <head>
@@ -134,52 +119,16 @@ def dashboard():
       <title>🚮 Dashboard do Caixote de Lixo</title>
       <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
       <style>
-        body {
-          font-family: sans-serif;
-          padding: 20px;
-          background: #f4f4f4;
-          margin: 0;
-        }
-        h1 {
-          color: #2c3e50;
-          margin-bottom: 15px;
-          display: flex;
-          align-items: center;
-        }
-        h1 img {
-          height: 32px;
-          margin-right: 10px;
-        }
-        h1 span {
-          vertical-align: middle;
-        }
-        .card {
-          background: white;
-          padding: 12px;
-          border-radius: 8px;
-          box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-          margin-bottom: 8px;
-          display: flex;
-          justify-content: space-between;
-          font-size: 0.95em;
-        }
-        .deposito {
-          color: #2196F3;
-          font-weight: bold;
-        }
-        canvas {
-          background: white;
-          border-radius: 8px;
-          box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-          margin-bottom: 15px;
-        }
+        body { font-family: sans-serif; padding: 20px; background: #f4f4f4; margin: 0; }
+        h1 { color: #2c3e50; display: flex; align-items: center; margin-bottom: 15px; }
+        .card { background: white; padding: 12px; border-radius: 8px; margin-bottom: 8px;
+                box-shadow: 0 2px 5px rgba(0,0,0,0.1); display: flex; justify-content: space-between; }
+        .deposito { color: #2196F3; font-weight: bold; }
+        canvas { background: white; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); margin-bottom: 15px; }
       </style>
     </head>
     <body>
-      <h1>
-        <span>🚮 Histórico do Caixote de Lixo</span>
-      </h1>
-
+      <h1>🚮 Histórico do Caixote de Lixo</h1>
       <p>Total de eventos: <strong id="total_lixo">0</strong></p>
       <canvas id="grafico_lixo" width="600" height="200"></canvas>
       <div id="historico_lixo"></div>
@@ -189,38 +138,22 @@ def dashboard():
           fetch('/historico_lixo')
             .then(response => response.json())
             .then(data => {
-              // Exibe o total de eventos
               document.getElementById("total_lixo").innerText = data.length;
-
-              // “Limpa” a lista de histórico
               const divL = document.getElementById("historico_lixo");
               divL.innerHTML = "";
 
-              // Prepara arrays para o gráfico (somente “contagem”)
-              const labelsL = [];
-              const contagensL = [];
-
-              // Percorre do mais antigo (embaixo) ao mais recente (cima)
+              const labelsL = [], contagensL = [];
               data.slice().reverse().forEach(item => {
-                // Cria um cartão para cada evento:
-                // ex.: { "hora": "2025-06-06 13:07:25", "deposito": "1" }
                 const c = document.createElement("div");
                 c.className = "card";
-                c.innerHTML = `
-                  <span>${item.hora}</span>
-                  <span class="deposito">Contagem: ${item.deposito}</span>
-                `;
+                c.innerHTML = `<span>${item.hora}</span><span class="deposito">Contagem: ${item.deposito}</span>`;
                 divL.appendChild(c);
-
-                // Hora (só HH:MM:SS) para o rótulo do eixo X
                 labelsL.push(item.hora.split(" ")[1]);
                 contagensL.push(parseInt(item.deposito) || 0);
               });
 
-              // Gera (ou reinicializa) o gráfico de linha
               const ctx = document.getElementById("grafico_lixo").getContext("2d");
               if (window.grafLixo) window.grafLixo.destroy();
-
               window.grafLixo = new Chart(ctx, {
                 type: 'line',
                 data: {
@@ -239,41 +172,32 @@ def dashboard():
                   scales: {
                     y: {
                       beginAtZero: true,
+                      suggestedMax: 10,
                       precision: 0
                     }
                   },
                   plugins: {
-                    legend: {
-                      display: true,
-                      position: 'top'
-                    }
+                    legend: { display: true, position: 'top' }
                   }
                 }
               });
             })
-            .catch(err => {
-              console.error("Falha ao buscar /historico_lixo:", err);
-            });
+            .catch(err => console.error("Falha ao buscar histórico:", err));
         }
 
-        // Atualiza a cada 3 segundos
         setInterval(atualizarLixo, 3000);
-        // Chamada inicial
         atualizarLixo();
       </script>
     </body>
     </html>
-    """
-    return render_template_string(html)
+    """)
 
-# —————————————————————— ROTA QUE RETORNA O HISTÓRICO EM JSON ——————————————————————
+# —————————————————————— API JSON ——————————————————————
 @app.route('/historico_lixo')
 def historico_lixo_json():
-    # Retorna somente as 20 primeiras entradas (índice 0 a 19).
     return jsonify(historico_lixo[:20])
 
-# —————————————————————— INICIALIZAÇÃO DO SERVIDOR ——————————————————————
+# —————————————————————— INICIAR SERVIDOR ——————————————————————
 if __name__ == "__main__":
-    # Porta padrão (8080), mas respeita variável de ambiente PORT (no Fly e outros PaaS)
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
