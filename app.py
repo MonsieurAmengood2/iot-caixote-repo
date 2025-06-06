@@ -177,8 +177,6 @@ def dashboard():
     </head>
     <body>
       <h1>
-        <!-- Substitua o src pelo caminho correto do seu logo -->
-        <img src="https://raw.githubusercontent.com/your-usuario/your-repo/main/logo.png" alt="Logo" />
         <span>🚮 Histórico do Caixote de Lixo</span>
       </h1>
 
