@@ -10,8 +10,8 @@ app.secret_key = os.environ["SECRET_KEY"]
 USERNAME = os.environ["FLASK_USER"]
 PASSWORD = os.environ["FLASK_PASS"]
 
-# —————————————————————— Persistência do histórico em arquivo JSON ——————————————————————
-HISTORICO_FILE = "historico.json"
+# —————————————————————— Caminho persistente no volume montado ——————————————————————
+HISTORICO_FILE = "/data/historico.json"  # ⬅ volume persistente
 
 def carregar_historico():
     if os.path.exists(HISTORICO_FILE):
@@ -31,13 +31,13 @@ def registo_lixo():
     contador = request.args.get("deposito", "")
     hora_atual = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    # Só adiciona se for diferente do último valor
+    # Só registra se o valor for diferente do último
     if not historico_lixo or historico_lixo[0]["deposito"] != contador:
         historico_lixo.insert(0, {"hora": hora_atual, "deposito": contador})
         salvar_historico()
     return "OK", 200
 
-# —————————————————————— ROTA DE LOGIN ——————————————————————
+# —————————————————————— LOGIN ——————————————————————
 @app.route('/', methods=['GET', 'POST'])
 def login():
     erro = ""
@@ -51,7 +51,7 @@ def login():
     <!DOCTYPE html>
     <html lang="pt-BR">
     <head>
-      <meta charset="UTF-8" />
+      <meta charset="UTF-8">
       <title>🔐 Login</title>
       <style>
         body {
@@ -74,7 +74,6 @@ def login():
           width: 100%;
           padding: 10px;
           margin: 10px 0;
-          box-sizing: border-box;
         }
         button {
           background: #4CAF50;
@@ -82,9 +81,6 @@ def login():
           border: none;
           border-radius: 5px;
           cursor: pointer;
-        }
-        button:hover {
-          background: #45A049;
         }
         .erro {
           color: red;
@@ -96,8 +92,8 @@ def login():
       <form method="POST">
         <div class="card">
           <h2>🔐 Login</h2>
-          <input type="text" name="username" placeholder="Utilizador" required />
-          <input type="password" name="password" placeholder="Palavra-passe" required />
+          <input type="text" name="username" placeholder="Utilizador" required>
+          <input type="password" name="password" placeholder="Palavra-passe" required>
           <button type="submit">Entrar</button>
           <p class="erro">{{ erro }}</p>
         </div>
@@ -115,7 +111,7 @@ def dashboard():
     <!DOCTYPE html>
     <html lang="pt-BR">
     <head>
-      <meta charset="UTF-8" />
+      <meta charset="UTF-8">
       <title>🚮 Dashboard do Caixote de Lixo</title>
       <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
       <style>
@@ -182,7 +178,7 @@ def dashboard():
                 }
               });
             })
-            .catch(err => console.error("Falha ao buscar histórico:", err));
+            .catch(err => console.error("Erro ao buscar histórico:", err));
         }
 
         setInterval(atualizarLixo, 3000);
@@ -197,7 +193,7 @@ def dashboard():
 def historico_lixo_json():
     return jsonify(historico_lixo[:20])
 
-# —————————————————————— INICIAR SERVIDOR ——————————————————————
+# —————————————————————— START SERVER ——————————————————————
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
